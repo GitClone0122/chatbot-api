@@ -12,7 +12,7 @@ if (!GEMINI_API_KEY) {
 }
 
 // URL Endpoint Gemini API
-const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
+const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
 // Sesuaikan model jika Anda menggunakan yang berbeda, misal: gemini-1.5-pro, gemini-pro
 
 // --- Fungsi Handler Utama Vercel Function ---
