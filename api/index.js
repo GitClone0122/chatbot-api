@@ -1,19 +1,16 @@
-// api/index.js (Memanggil Gemini API Langsung dengan Fetch)
+// api/index.js
 
 // TIDAK ADA LAGI import { GoogleGenAI } dari "@google/genai";
 // Karena kita akan memanggil API secara langsung menggunakan fetch.
 
-// --- Inisialisasi Global (Dilakukan sekali per Cold Start Vercel Function) ---
-
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY; // Nama variabel lingkungan di Vercel
+// --- Inisialisasi Global ---
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY; 
 
 if (!GEMINI_API_KEY) {
     console.error("FATAL ERROR: Variabel lingkungan GEMINI_API_KEY belum diatur di Vercel!");
 }
 
-// URL Endpoint Gemini API
 const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
-// Sesuaikan model jika Anda menggunakan yang berbeda, misal: gemini-1.5-pro, gemini-pro
 
 // --- Fungsi Handler Utama Vercel Function ---
 module.exports = async function handler(req, res) {
@@ -23,7 +20,7 @@ module.exports = async function handler(req, res) {
 
     // --- 1. Tangani Permintaan Pre-flight OPTIONS (untuk CORS) ---
     if (req.method === 'OPTIONS') {
-        res.setHeader('Access-Control-Allow-Origin', '*'); // Ganti dengan domain frontend Anda di produksi
+        res.setHeader('Access-Control-Allow-Origin', 'https://khoira.biz.id'); 
         res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
         res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
         res.status(204).end();
@@ -31,7 +28,7 @@ module.exports = async function handler(req, res) {
     }
 
     // --- 2. Set Header CORS untuk Respons Aktual (POST) ---
-    res.setHeader('Access-Control-Allow-Origin', '*'); // Ganti dengan domain frontend Anda di produksi
+    res.setHeader('Access-Control-Allow-Origin', 'https://khoira.biz.id'); 
     res.setHeader('Access-Control-Allow-Methods', 'POST');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
@@ -50,30 +47,54 @@ module.exports = async function handler(req, res) {
         }
 
         // --- 4. Buat Prompt untuk Gemini AI ---
+        // Prompt sekarang akan meminta AI untuk mengembalikan data produk dalam format JSON
         const prompt = `
             Anda adalah asisten belanja yang ramah dan membantu untuk website katalog afiliasi.
-            Tugas Anda adalah memberikan rekomendasi produk berdasarkan pertanyaan pengguna.
-            Gunakan daftar produk di bawah ini sebagai sumber pengetahuan Anda.
-            Jawablah dengan gaya bahasa yang natural, santai, dan persuasif dalam format Markdown.
+            Tugas Anda adalah merekomendasikan produk dari daftar yang diberikan berdasarkan pertanyaan pengguna.
+            Jika ada produk yang relevan, **berikan respons dalam format JSON Array** yang berisi objek-objek produk yang direkomendasikan.
+            Setiap objek produk harus memiliki properti yang sama seperti dalam daftar produk yang Anda terima (id, name, description, imageUrl, price, rating, shopeeUrl, tokopediaUrl, dll).
+            Jika tidak ada produk yang relevan, atau pertanyaan di luar lingkup rekomendasi produk, **berikan respons JSON dengan properti "text"** yang berisi pesan tekstual biasa.
+            **Penting:** Selalu balas dalam format JSON.
 
-            Daftar Produk (dalam format JSON):
+            Daftar Produk yang Tersedia (dalam format JSON):
             ${JSON.stringify(context || [])} 
 
             Pertanyaan dari Pengguna: "${message}"
 
-            Jawaban Anda (Gunakan Markdown):
+            Format Respons JSON (jika rekomendasi produk):
+            [
+                {
+                    "id": "string",
+                    "name": "string",
+                    "description": "string",
+                    "imageUrl": "string",
+                    "price": number,
+                    "rating": number,
+                    "shopeeUrl": "string",
+                    "tokopediaUrl": "string"
+                }
+            ]
+
+            Format Respons JSON (jika pesan tekstual biasa):
+            {
+                "text": "string"
+            }
         `;
 
         console.log('Constructed prompt for Gemini AI:\n', prompt);
 
         // --- 5. Panggil Gemini API Langsung dengan fetch ---
-        // Kunci API ditambahkan sebagai query parameter.
         const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
+                // TAMBAHKAN generationConfig untuk meminta respons JSON terstruktur!
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    // responseSchema: { ... } // Schema bisa lebih spesifik jika diperlukan, tapi AI cukup pintar dengan instruksi prompt
+                },
                 contents: [{ parts: [{ text: prompt }] }]
             })
         });
@@ -85,16 +106,44 @@ module.exports = async function handler(req, res) {
         }
 
         const data = await response.json();
-        let botMessage = "Maaf, saya tidak dapat memproses permintaan Anda saat ini.";
-        if (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0]) {
-            botMessage = data.candidates[0].content.parts[0].text;
+        let aiResponseContent = null;
+        
+        // Pastikan respons AI adalah JSON yang valid
+        if (data.candidates && data.candidates.length > 0 && 
+            data.candidates[0].content && data.candidates[0].content.parts &&
+            data.candidates[0].content.parts.length > 0) {
+            
+            const rawTextResponse = data.candidates[0].content.parts[0].text;
+            console.log('Raw text response from Gemini API:', rawTextResponse);
+
+            try {
+                // Coba parse respons AI sebagai JSON
+                aiResponseContent = JSON.parse(rawTextResponse);
+                console.log('Parsed AI response content:', aiResponseContent);
+            } catch (parseJsonError) {
+                console.error('ERROR: Could not parse AI response as JSON:', parseJsonError);
+                console.error('AI Raw Text Response:', rawTextResponse);
+                // Jika tidak bisa di-parse sebagai JSON, anggap itu adalah pesan biasa
+                aiResponseContent = { text: "Maaf, saya kesulitan memahami respons dari AI." };
+            }
         } else {
-            console.warn('Gemini API response did not have expected format:', data);
+            console.warn('Gemini API response did not have expected structure or content:', data);
+            aiResponseContent = { text: "Maaf, saya tidak dapat memproses permintaan Anda saat ini." };
         }
-        console.log('Received Gemini API response text:', botMessage);
 
         // --- 6. Mengembalikan Respons Sukses ---
-        return res.status(200).json({ reply: botMessage });
+        // Mengembalikan objek yang berisi 'reply' (untuk pesan teks) atau 'products' (untuk rekomendasi)
+        // Kita akan deteksi di frontend apakah itu pesan teks atau array produk.
+        if (Array.isArray(aiResponseContent)) {
+            // Jika AI mengembalikan array (rekomendasi produk)
+            return res.status(200).json({ products: aiResponseContent });
+        } else if (aiResponseContent && typeof aiResponseContent.text === 'string') {
+            // Jika AI mengembalikan objek dengan properti 'text' (pesan biasa)
+            return res.status(200).json({ reply: aiResponseContent.text });
+        } else {
+            // Fallback jika format tidak sesuai harapan
+            return res.status(200).json({ reply: "Maaf, saya tidak dapat memproses rekomendasi saat ini." });
+        }
 
     } catch (error) {
         // --- 7. Penanganan Error Umum ---
