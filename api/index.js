@@ -1,30 +1,29 @@
-// api/index.js (Menggunakan require() untuk CommonJS)
+// api/index.js (Memanggil Gemini API Langsung dengan Fetch)
 
-// Mengimpor SDK Google Gemini menggunakan sintaks CommonJS (require)
-// Ini akan memaksa Vercel untuk menggunakan distribusi CommonJS dari SDK.
-const { GoogleGenAI } = require("@google/genai");
+// TIDAK ADA LAGI import { GoogleGenAI } dari "@google/genai";
+// Karena kita akan memanggil API secara langsung menggunakan fetch.
 
 // --- Inisialisasi Global (Dilakukan sekali per Cold Start Vercel Function) ---
 
-const API_KEY = process.env.GEMINI_API_KEY;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY; // Nama variabel lingkungan di Vercel
 
-if (!API_KEY) {
+if (!GEMINI_API_KEY) {
     console.error("FATAL ERROR: Variabel lingkungan GEMINI_API_KEY belum diatur di Vercel!");
 }
 
-const genAI = new GoogleGenAI(API_KEY);
-const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' }); // Sesuaikan model jika perlu
+// URL Endpoint Gemini API
+const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
+// Sesuaikan model jika Anda menggunakan yang berbeda, misal: gemini-1.5-pro, gemini-pro
 
-// --- Fungsi Handler Utama Vercel Function (menggunakan CommonJS) ---
-// Ini adalah fungsi yang akan diekspor sebagai handler utama untuk Vercel.
-module.exports = async function handler(req, res) { // Menggunakan module.exports = async function
-    console.log('Vercel Function Started (CommonJS Mode).');
+// --- Fungsi Handler Utama Vercel Function ---
+module.exports = async function handler(req, res) {
+    console.log('Vercel Function Started (Direct Fetch Mode).');
     console.log('Request Method:', req.method);
     console.log('Request Body (parsed by Vercel):', req.body);
 
     // --- 1. Tangani Permintaan Pre-flight OPTIONS (untuk CORS) ---
     if (req.method === 'OPTIONS') {
-        res.setHeader('Access-Control-Allow-Origin', '*'); // Ganti dengan domain frontend Anda untuk produksi
+        res.setHeader('Access-Control-Allow-Origin', '*'); // Ganti dengan domain frontend Anda di produksi
         res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
         res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
         res.status(204).end();
@@ -32,7 +31,7 @@ module.exports = async function handler(req, res) { // Menggunakan module.export
     }
 
     // --- 2. Set Header CORS untuk Respons Aktual (POST) ---
-    res.setHeader('Access-Control-Allow-Origin', '*'); // Ganti dengan domain frontend Anda untuk produksi
+    res.setHeader('Access-Control-Allow-Origin', '*'); // Ganti dengan domain frontend Anda di produksi
     res.setHeader('Access-Control-Allow-Methods', 'POST');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
@@ -67,13 +66,31 @@ module.exports = async function handler(req, res) { // Menggunakan module.export
 
         console.log('Constructed prompt for Gemini AI:\n', prompt);
 
-        // --- 5. Panggil Gemini API ---
-        console.log('Making call to Gemini API...');
-        const result = await model.generateContent(prompt);
-        console.log('Gemini API call successful. Retrieving response...');
+        // --- 5. Panggil Gemini API Langsung dengan fetch ---
+        // Kunci API ditambahkan sebagai query parameter.
+        const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }]
+            })
+        });
 
-        const response = await result.response;
-        const botMessage = response.text();
+        if (!response.ok) {
+            const errorData = await response.json();
+            console.error('Gemini API Direct Fetch Error:', errorData);
+            throw new Error(`Gemini API Error: ${errorData.error ? errorData.error.message : response.statusText}`);
+        }
+
+        const data = await response.json();
+        let botMessage = "Maaf, saya tidak dapat memproses permintaan Anda saat ini.";
+        if (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0]) {
+            botMessage = data.candidates[0].content.parts[0].text;
+        } else {
+            console.warn('Gemini API response did not have expected format:', data);
+        }
         console.log('Received Gemini API response text:', botMessage);
 
         // --- 6. Mengembalikan Respons Sukses ---
@@ -81,14 +98,13 @@ module.exports = async function handler(req, res) { // Menggunakan module.export
 
     } catch (error) {
         // --- 7. Penanganan Error Umum ---
-        console.error('FATAL ERROR in Vercel Function during execution (CommonJS Mode):', error);
+        console.error('FATAL ERROR in Vercel Function (Direct Fetch Mode):', error);
         console.error('Error Name:', error.name);
         console.error('Error Message:', error.message);
         console.error('Error Stack:', error.stack);
 
         return res.status(500).json({
             error: `An unexpected server error occurred: ${error.message}`,
-            // detail: error.stack
         });
     }
 };
