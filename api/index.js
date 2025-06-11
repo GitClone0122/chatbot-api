@@ -7,12 +7,12 @@ if (!GEMINI_API_KEY) {
     console.error("FATAL ERROR: Variabel lingkungan GEMINI_API_KEY belum diatur di Vercel!");
 }
 
-const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
+const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
 
 // --- Fungsi Handler Utama Vercel Function ---
 module.exports = async function handler(req, res) {
     // --- 1. Tangani CORS ---
-    res.setHeader('Access-Control-Allow-Origin', 'https://khoira.biz.id'); // Ganti '*' dengan domain Anda jika sudah production
+    res.setHeader('Access-Control-Allow-Origin', '*'); // Ganti '*' dengan domain Anda jika sudah production
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     if (req.method === 'OPTIONS') {
