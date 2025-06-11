@@ -1,6 +1,4 @@
 // Memanggil API secara langsung menggunakan fetch.
-// Tidak ada lagi import SDK @google/genai di sini.
-
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 if (!GEMINI_API_KEY) {
@@ -12,14 +10,13 @@ const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/
 // --- Fungsi Handler Utama Vercel Function ---
 module.exports = async function handler(req, res) {
     // --- 1. Tangani CORS ---
-    res.setHeader('Access-Control-Allow-Origin', '*'); // Ganti '*' dengan domain Anda jika sudah production
+    res.setHeader('Access-Control-Allow-Origin', 'https://khoira.biz.id'); // Ganti '*' dengan domain Anda jika sudah production
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     if (req.method === 'OPTIONS') {
         return res.status(204).end();
     }
 
-    // --- 2. Pastikan Metode POST ---
     if (req.method !== 'POST') {
         return res.status(405).json({ error: 'Method Not Allowed' });
     }
@@ -31,8 +28,6 @@ module.exports = async function handler(req, res) {
             return res.status(400).json({ error: 'Pesan dan konteks produk wajib diisi.' });
         }
 
-        // --- 3. [UPDATED] Buat Prompt Baru untuk Gemini AI ---
-        // Meminta AI untuk mengembalikan NAMA produk saja.
         const prompt = `
             Anda adalah AI asisten belanja. Tugas Anda adalah memilih produk yang paling relevan dari daftar di bawah ini berdasarkan pertanyaan pengguna.
             Balas HANYA dengan format JSON yang berisi sebuah array dari nama-nama produk yang direkomendasikan.
@@ -46,7 +41,6 @@ module.exports = async function handler(req, res) {
             Pertanyaan Pengguna: "${message}"
         `;
 
-        // --- 4. Panggil Gemini API ---
         const geminiResponse = await fetch(GEMINI_API_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -61,11 +55,19 @@ module.exports = async function handler(req, res) {
 
         const data = await geminiResponse.json();
         
-        // --- 5. [NEW] Proses Jawaban dari AI ---
         if (data.candidates && data.candidates.length > 0) {
-            const rawTextResponse = data.candidates[0].content.parts[0].text;
-            let recommendedNames = [];
+            let rawTextResponse = data.candidates[0].content.parts[0].text;
+            
+            // --- [FIXED] Membersihkan jawaban AI dari format Markdown ---
+            const jsonRegex = /```json\s*([\s\S]*?)\s*```/;
+            const match = rawTextResponse.match(jsonRegex);
+            
+            if (match && match[1]) {
+                rawTextResponse = match[1]; // Ambil hanya bagian JSON murninya
+            }
+            // --- Akhir Perbaikan ---
 
+            let recommendedNames = [];
             try {
                 const parsedJson = JSON.parse(rawTextResponse);
                 if (parsedJson.recommendations && Array.isArray(parsedJson.recommendations)) {
@@ -73,11 +75,10 @@ module.exports = async function handler(req, res) {
                 }
             } catch (e) {
                 console.error("Gagal mem-parsing JSON dari AI, menganggap sebagai teks biasa:", rawTextResponse);
-                return res.status(200).json({ reply: rawTextResponse });
+                return res.status(200).json({ reply: rawTextResponse }); // Kirim sebagai teks jika gagal parsing
             }
 
             if (recommendedNames.length > 0) {
-                // Cari detail produk lengkap dari konteks asli berdasarkan nama yang direkomendasikan
                 const recommendedProducts = productsFromFrontend.filter(p => recommendedNames.includes(p.name));
                 return res.status(200).json({ products: recommendedProducts });
             } else {
