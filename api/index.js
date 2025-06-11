@@ -7,7 +7,7 @@ if (!GEMINI_API_KEY) {
     console.error("FATAL ERROR: Variabel lingkungan GEMINI_API_KEY belum diatur di Vercel!");
 }
 
-const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent`;
+const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
 
 // --- Fungsi Handler Utama Vercel Function ---
 module.exports = async function handler(req, res) {
