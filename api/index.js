@@ -29,9 +29,14 @@ module.exports = async function handler(req, res) {
         }
 
         const prompt = `
-            Anda adalah AI asisten belanja. Tugas Anda adalah memilih produk yang paling relevan dari daftar di bawah ini berdasarkan pertanyaan pengguna.
-            Balas HANYA dengan format JSON yang berisi sebuah array dari nama-nama produk yang direkomendasikan.
-            Contoh format balasan: {"recommendations": ["Nama Produk A", "Nama Produk B"]}
+            Anda adalah AI asisten belanja yang sangat ramah. Tugas Anda adalah memberikan rekomendasi produk dari daftar yang diberikan.
+            Balas HANYA dengan format JSON. JSON harus memiliki dua properti:
+            1.  "reply_text": sebuah string berisi kalimat pembuka yang ramah dan atraktif.
+            2.  "recommended_products": sebuah array berisi NAMA-NAMA produk yang relevan.
+            
+            Contoh format balasan: 
+            {"reply_text": "Tentu, ini beberapa rekomendasi sandal gunung yang keren buatmu:", "recommended_products": ["Nama Produk A", "Nama Produk B"]}
+    
             Jika tidak ada yang cocok, kembalikan array kosong: {"recommendations": []}
             Jangan berikan kalimat pembuka atau penutup, hanya JSON.
 
