@@ -1,4 +1,4 @@
-// Menggunakan fetch untuk memanggil API secara langsung.
+// Memanggil API secara langsung menggunakan fetch.
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 if (!GEMINI_API_KEY) {
@@ -9,7 +9,7 @@ const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/
 
 module.exports = async function handler(req, res) {
     // --- 1. Tangani CORS ---
-    res.setHeader('Access-Control-Allow-Origin', 'https://khoira.biz.id'); // Ganti '*' dengan domain Anda jika sudah production
+    res.setHeader('Access-Control-Allow-Origin', 'https://khoira.biz.id/'); // Ganti '*' dengan domain Anda jika sudah production
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     if (req.method === 'OPTIONS') {
@@ -28,24 +28,24 @@ module.exports = async function handler(req, res) {
         }
 
         // --- 2. [UPDATED] Prompt Baru yang Lebih Cerdas ---
+        // Meminta AI untuk mengembalikan TEKS PEMBUKA dan DAFTAR NAMA PRODUK
         const prompt = `
-            Anda adalah seorang asisten belanja AI yang sangat ramah, cerdas, dan atraktif untuk website katalog afiliasi.
-            Tugas Anda adalah memberikan rekomendasi produk yang meyakinkan dari daftar yang diberikan.
+            Anda adalah AI asisten belanja yang sangat ramah. Tugas Anda adalah memberikan rekomendasi produk dari daftar yang diberikan.
+            Balas HANYA dengan format JSON. JSON harus memiliki dua properti:
+            1.  "reply_text": sebuah string berisi kalimat pembuka yang ramah dan atraktif.
+            2.  "recommended_products": sebuah array berisi NAMA-NAMA produk yang relevan.
 
-            PERINTAH PENTING:
-            1.  Mulai dengan kalimat pembuka yang ramah dan bersahabat.
-            2.  Analisis pertanyaan pengguna dan daftar produk yang tersedia.
-            3.  Jika ada produk yang relevan, jelaskan mengapa produk itu cocok. KATEGORIKAN jawaban Anda jika memungkinkan untuk memberikan pilihan yang lebih jelas kepada pengguna (Contoh: "untuk santai" vs "untuk aktivitas berat").
-            4.  Sebutkan nama produk yang direkomendasikan dengan **TEPAT** seperti yang ada di dalam daftar.
-            5.  Gunakan format **Markdown** untuk membuat jawaban Anda mudah dibaca (gunakan **teks tebal** untuk penekanan dan tanda bintang \`*\` atau tanda hubung \`-\` untuk daftar berpoin).
-            6.  Jika tidak ada produk yang cocok, berikan jawaban yang sopan bahwa produk tidak ditemukan dan mungkin tawarkan alternatif.
+            Contoh format balasan: 
+            {"reply_text": "Tentu, ini beberapa rekomendasi sandal gunung yang keren buatmu:", "recommended_products": ["Nama Produk A", "Nama Produk B"]}
             
-            Daftar Produk yang Tersedia (JSON):
+            Jika tidak ada produk yang cocok, kembalikan array "recommended_products" yang kosong.
+            Jika pertanyaannya di luar konteks produk, berikan jawaban di "reply_text" dan biarkan "recommended_products" kosong.
+            Jangan berikan kalimat pembuka atau penutup lain di luar format JSON.
+
+            Daftar Produk yang Tersedia:
             ${JSON.stringify(productsFromFrontend.map(p => ({ name: p.name, category: p.category, description: p.description })))}
 
-            Pertanyaan dari Pengguna: "${message}"
-
-            Jawaban Anda (dalam format Markdown):
+            Pertanyaan Pengguna: "${message}"
         `;
 
         // --- 3. Panggil Gemini API ---
@@ -62,11 +62,34 @@ module.exports = async function handler(req, res) {
 
         const data = await geminiResponse.json();
         
-        // --- 4. Proses dan Kirim Jawaban Teks ---
+        // --- 4. Proses Jawaban dari AI ---
         if (data.candidates && data.candidates.length > 0) {
-            const botMessage = data.candidates[0].content.parts[0].text;
-            // Langsung kirim balasan teks dari AI, tidak perlu parsing JSON lagi di sini.
-            return res.status(200).json({ reply: botMessage });
+            let rawTextResponse = data.candidates[0].content.parts[0].text;
+            
+            // Membersihkan jawaban AI dari format Markdown
+            const jsonRegex = /```json\s*([\s\S]*?)\s*```/;
+            const match = rawTextResponse.match(jsonRegex);
+            if (match && match[1]) {
+                rawTextResponse = match[1];
+            }
+
+            try {
+                const parsedJson = JSON.parse(rawTextResponse);
+                const replyText = parsedJson.reply_text || "Berikut adalah rekomendasi untukmu:";
+                const recommendedNames = parsedJson.recommended_products || [];
+
+                if (recommendedNames.length > 0) {
+                    const recommendedProducts = productsFromFrontend.filter(p => recommendedNames.includes(p.name));
+                    // Kembalikan TEKS dan PRODUK secara bersamaan
+                    return res.status(200).json({ reply: replyText, products: recommendedProducts });
+                } else {
+                    // Jika tidak ada rekomendasi produk, kembalikan teks saja
+                    return res.status(200).json({ reply: replyText });
+                }
+            } catch (e) {
+                console.error("Gagal mem-parsing JSON dari AI, menganggap sebagai teks biasa:", rawTextResponse);
+                return res.status(200).json({ reply: rawTextResponse });
+            }
         } else {
              return res.status(200).json({ reply: "Maaf, sepertinya saya sedang tidak bisa memberikan rekomendasi saat ini." });
         }
